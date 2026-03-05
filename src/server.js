@@ -1,7 +1,6 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import Stripe from 'stripe';
-import nodemailer from 'nodemailer';
 
 dotenv.config();
 
@@ -10,15 +9,28 @@ const port = process.env.PORT || 3000;
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: Number(process.env.SMTP_PORT || 465),
-  secure: true,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+async function sendEmailResend({ to, subject, html }) {
+  const resp = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev',
+      to: [to],
+      subject,
+      html,
+    }),
+  });
+
+  if (!resp.ok) {
+    const txt = await resp.text();
+    throw new Error(`Resend error ${resp.status}: ${txt}`);
+  }
+
+  return resp.json();
+}
 
 app.get('/health', (req, res) => {
   res.json({ ok: true, service: 'inscricoes-bot' });
@@ -29,11 +41,7 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
 
   let event;
   try {
-    event = stripe.webhooks.constructEvent(
-      req.body,
-      sig,
-      process.env.STRIPE_WEBHOOK_SECRET
-    );
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
     console.error('❌ Stripe signature inválida:', err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
@@ -59,14 +67,13 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
       });
 
       const calendarUrl = process.env.INTERVIEW_CALENDAR_URL || 'https://calendly.com/';
+      const metadataFlow = String(session.metadata?.flow || '').toLowerCase();
+      const isInterviewFee =
+        metadataFlow === 'interview_fee' ||
+        metadataFlow === 'entrevista' ||
+        (currency === 'eur' && amountCents === 1000);
 
-      if (email !== 'sem-email' && process.env.SMTP_USER && process.env.SMTP_PASS) {
-        const metadataFlow = String(session.metadata?.flow || '').toLowerCase();
-        const isInterviewFee =
-          metadataFlow === 'interview_fee' ||
-          metadataFlow === 'entrevista' ||
-          (currency === 'eur' && amountCents === 1000);
-
+      if (email !== 'sem-email' && process.env.RESEND_API_KEY) {
         const subject = isInterviewFee
           ? 'Pagamento confirmado — Entrevista Mastering Lisboa'
           : 'Pagamento confirmado — Curso Mastering Lisboa';
@@ -87,35 +94,24 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
           `;
 
         try {
-          await transporter.sendMail({
-            from: process.env.SMTP_FROM || process.env.SMTP_USER,
-            to: email,
-            subject,
-            html,
-          });
+          await sendEmailResend({ to: email, subject, html });
           console.log('📧 Email enviado para', email);
         } catch (mailErr) {
           console.error('❌ Erro ao enviar email:', mailErr.message);
         }
 
-        // Notificação interna para o Hugo quando entra nova inscrição de entrevista
         if (isInterviewFee && process.env.ADMIN_NOTIFY_EMAIL) {
-          const adminSubject = 'Nova inscrição para entrevista — Mastering Lisboa';
-          const adminHtml = `
-            <h2>Nova inscrição para entrevista 🎯</h2>
-            <p><strong>Email do aluno:</strong> ${email}</p>
-            <p><strong>Nome:</strong> ${session.customer_details?.name || 'N/D'}</p>
-            <p><strong>Valor:</strong> ${amount} ${currency.toUpperCase()}</p>
-            <p><strong>Session ID:</strong> ${session.id}</p>
-            <p><strong>Data:</strong> ${new Date().toISOString()}</p>
-          `;
-
           try {
-            await transporter.sendMail({
-              from: process.env.SMTP_FROM || process.env.SMTP_USER,
+            await sendEmailResend({
               to: process.env.ADMIN_NOTIFY_EMAIL,
-              subject: adminSubject,
-              html: adminHtml,
+              subject: 'Nova inscrição para entrevista — Mastering Lisboa',
+              html: `
+                <h2>Nova inscrição para entrevista 🎯</h2>
+                <p><strong>Email do aluno:</strong> ${email}</p>
+                <p><strong>Nome:</strong> ${session.customer_details?.name || 'N/D'}</p>
+                <p><strong>Valor:</strong> ${amount} ${currency.toUpperCase()}</p>
+                <p><strong>Session ID:</strong> ${session.id}</p>
+              `,
             });
             console.log('📨 Notificação interna enviada para', process.env.ADMIN_NOTIFY_EMAIL);
           } catch (adminErr) {
@@ -123,18 +119,17 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
           }
         }
       } else {
-        console.log('ℹ️ SMTP não configurado; email não enviado.');
+        console.log('ℹ️ RESEND_API_KEY não configurada; email não enviado.');
       }
     }
 
-    res.json({ received: true });
+    return res.json({ received: true });
   } catch (err) {
     console.error('❌ Erro ao processar evento:', err);
-    res.status(500).json({ error: 'internal_error' });
+    return res.status(500).json({ error: 'internal_error' });
   }
 });
 
-// IMPORTANTE: qualquer rota JSON deve vir DEPOIS do webhook raw
 app.use(express.json());
 
 app.listen(port, () => {
