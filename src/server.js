@@ -8,7 +8,7 @@ import express from 'express';
    const app = express();                                                       
    const port = process.env.PORT || 3000;                                       
                                                                                 
-   const stripe = new Stripe(process.env.STRIPE_SECRET _KEY);                   
+   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);                   
                                                                                 
    const transporter = nodemailer.createTransport({                             
    host: process.env.SMTP_HOST || 'smtp.gmail.com',                             
@@ -66,7 +66,6 @@ import express from 'express';
    if (email !== 'sem-email' && process.env.SMTP_USER && process.env.SMTP_PASS) 
  {                                                                              
    const metadataFlow = String(session.metadata?.flow || '').toLowerCase();     
-                                                                                
    const isInterviewFee =                                                       
    metadataFlow === 'interview_fee' ||                                          
    metadataFlow === 'entrevista' ||                                             
@@ -101,6 +100,32 @@ import express from 'express';
    console.log('📧 Email enviado para', email);                                 
    } catch (mailErr) {                                                          
    console.error('❌ Erro ao enviar email:', mailErr.message);                  
+   }                                                                            
+                                                                                
+   // Notificação interna para o Hugo quando entra nova inscrição de entrevista 
+   if (isInterviewFee && process.env.ADMIN_NOTIFY_EMAIL) {                      
+   const adminSubject = 'Nova inscrição para entrevista — Mastering Lisboa';    
+   const adminHtml = `                                                          
+   <h2>Nova inscrição para entrevista 🎯</h2>                                   
+   <p><strong>Email do aluno:</strong> ${email}</p>                             
+   <p><strong>Nome:</strong> ${session.customer_details?.name || 'N/D'}</p>     
+   <p><strong>Valor:</strong> ${amount} ${currency.toUpperCase()}</p>           
+   <p><strong>Session ID:</strong> ${session.id}</p>                            
+   <p><strong>Data:</strong> ${new Date().toISOString()}</p>                    
+   `;                                                                           
+                                                                                
+   try {                                                                        
+   await transporter.sendMail({                                                 
+   from: process.env.SMTP_FROM || process.env.SMTP_USER,                        
+   to: process.env.ADMIN_NOTIFY_EMAIL,                                          
+   subject: adminSubject,                                                       
+   html: adminHtml,                                                             
+   });                                                                          
+   console.log('📨 Notificação interna enviada para',                           
+ process.env.ADMIN_NOTIFY_EMAIL);                                               
+   } catch (adminErr) {                                                         
+   console.error('❌ Erro ao enviar notificação interna:', adminErr.message);   
+   }                                                                            
    }                                                                            
    } else {                                                                     
    console.log('ℹ️ SMTP não configurado; email não enviado.');                  
