@@ -50,16 +50,12 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
   try {
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
-      const metadataFlow = String(session.metadata?.flow || '').toLowerCase();     
-   if (metadataFlow !== 'interview_fee') {                                      
-   console.log('ℹ️ Ignorado: pagamento sem flow=interview_fee');                
-   return res.json({ received: true, ignored: true });                          
-   }  
 
       const amountCents = Number(session.amount_total || 0);
       const amount = amountCents / 100;
       const currency = (session.currency || '').toLowerCase();
       const email = session.customer_details?.email || session.customer_email || 'sem-email';
+      const metadataFlow = String(session.metadata?.flow || '').toLowerCase();
 
       console.log('✅ Pagamento confirmado:', {
         sessionId: session.id,
@@ -71,63 +67,62 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
         metadata: session.metadata || {},
       });
 
-      const zoomUrl = process.env.INTERVIEW_ZOOM_URL || 'https://us06web.zoom.us/j/83523224795?pwd=UjRnSzJncENkbVNhSFJiNzFUUFBHUT09';
-      const metadataFlow = String(session.metadata?.flow || '').toLowerCase();
-      const isInterviewFee =
-        metadataFlow === 'interview_fee' ||
-        metadataFlow === 'entrevista' ||
-        (currency === 'eur' && amountCents === 1000);
+      // MODO ESTRITO: só enviar email para inscrição (interview_fee)
+      if (metadataFlow !== 'interview_fee') {
+        console.log('ℹ️ Ignorado: pagamento sem flow=interview_fee');
+        return res.json({ received: true, ignored: true });
+      }
 
-      if (email !== 'sem-email' && process.env.RESEND_API_KEY) {
-        const subject = isInterviewFee
-          ? 'Pagamento confirmado — Entrevista Mastering Lisboa'
-          : 'Pagamento confirmado — Curso Mastering Lisboa';
+      if (email === 'sem-email') {
+        console.log('ℹ️ Sem email do cliente; não enviado.');
+        return res.json({ received: true, noEmail: true });
+      }
 
-        const html = isInterviewFee
-          ? `
-            <h2>Pagamento confirmado ✅</h2>
-            <p>Recebemos o teu pagamento de <strong>10€</strong> para a entrevista.</p>
-            <p>Não respondas a este email automático.</p>
-            <p><strong>Para marcar a entrevista, responde para:</strong> masteringlx@gmail.com</p>
-            <p><strong>Disponibilidade:</strong> segunda a sexta, das 09:00 às 17:00 (hora de Lisboa).</p>
-            <p><strong>Link Zoom da entrevista:</strong><br/><a href="${zoomUrl}">${zoomUrl}</a></p>
-            <p>Assim que recebermos a tua resposta, confirmamos o horário final.</p>
-            <p>Até já,<br/>Mastering Lisboa</p>
-          `
-          : `
-            <h2>Inscrição confirmada ✅</h2>
-            <p>Recebemos o teu pagamento final do curso.</p>
-            <p>Ficaste oficialmente inscrito/a.</p>
-            <p>Até já,<br/>Mastering Lisboa</p>
-          `;
-
-        try {
-          await sendEmailResend({ to: email, subject, html });
-          console.log('📧 Email enviado para', email);
-        } catch (mailErr) {
-          console.error('❌ Erro ao enviar email:', mailErr.message);
-        }
-
-        if (isInterviewFee && process.env.ADMIN_NOTIFY_EMAIL) {
-          try {
-            await sendEmailResend({
-              to: process.env.ADMIN_NOTIFY_EMAIL,
-              subject: 'Nova inscrição para entrevista — Mastering Lisboa',
-              html: `
-                <h2>Nova inscrição para entrevista 🎯</h2>
-                <p><strong>Email do aluno:</strong> ${email}</p>
-                <p><strong>Nome:</strong> ${session.customer_details?.name || 'N/D'}</p>
-                <p><strong>Valor:</strong> ${amount} ${currency.toUpperCase()}</p>
-                <p><strong>Session ID:</strong> ${session.id}</p>
-              `,
-            });
-            console.log('📨 Notificação interna enviada para', process.env.ADMIN_NOTIFY_EMAIL);
-          } catch (adminErr) {
-            console.error('❌ Erro ao enviar notificação interna:', adminErr.message);
-          }
-        }
-      } else {
+      if (!process.env.RESEND_API_KEY) {
         console.log('ℹ️ RESEND_API_KEY não configurada; email não enviado.');
+        return res.json({ received: true, noResend: true });
+      }
+
+      const zoomUrl =
+        process.env.INTERVIEW_ZOOM_URL ||
+        'https://us06web.zoom.us/j/83523224795?pwd=UjRnSzJncENkbVNhSFJiNzFUUFBHUT09';
+
+      const subject = 'Pagamento confirmado — Entrevista Mastering Lisboa';
+      const html = `
+        <h2>Pagamento confirmado ✅</h2>
+        <p>Recebemos o teu pagamento de <strong>10€</strong> para a entrevista.</p>
+        <p>Não respondas a este email automático.</p>
+        <p><strong>Para marcar a entrevista, responde para:</strong> masteringlx@gmail.com</p>
+        <p><strong>Disponibilidade:</strong> segunda a sexta, das 09:00 às 17:00 (hora de Lisboa).</p>
+        <p><strong>Link Zoom da entrevista:</strong><br/><a href="${zoomUrl}">${zoomUrl}</a></p>
+        <p>Assim que recebermos a tua resposta, confirmamos o horário final.</p>
+        <p>Até já,<br/>Mastering Lisboa</p>
+      `;
+
+      try {
+        await sendEmailResend({ to: email, subject, html });
+        console.log('📧 Email enviado para', email);
+      } catch (mailErr) {
+        console.error('❌ Erro ao enviar email:', mailErr.message);
+      }
+
+      if (process.env.ADMIN_NOTIFY_EMAIL) {
+        try {
+          await sendEmailResend({
+            to: process.env.ADMIN_NOTIFY_EMAIL,
+            subject: 'Nova inscrição para entrevista — Mastering Lisboa',
+            html: `
+              <h2>Nova inscrição para entrevista 🎯</h2>
+              <p><strong>Email do aluno:</strong> ${email}</p>
+              <p><strong>Nome:</strong> ${session.customer_details?.name || 'N/D'}</p>
+              <p><strong>Valor:</strong> ${amount} ${currency.toUpperCase()}</p>
+              <p><strong>Session ID:</strong> ${session.id}</p>
+            `,
+          });
+          console.log('📨 Notificação interna enviada para', process.env.ADMIN_NOTIFY_EMAIL);
+        } catch (adminErr) {
+          console.error('❌ Erro ao enviar notificação interna:', adminErr.message);
+        }
       }
     }
 
