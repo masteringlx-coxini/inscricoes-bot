@@ -66,7 +66,7 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
         metadata: session.metadata || {},
       });
 
-      const calendarUrl = process.env.INTERVIEW_CALENDAR_URL || 'https://calendly.com/';
+      const zoomUrl = process.env.INTERVIEW_ZOOM_URL || 'https://us06web.zoom.us/j/83523224795?pwd=UjRnSzJncENkbVNhSFJiNzFUUFBHUT09';
       const metadataFlow = String(session.metadata?.flow || '').toLowerCase();
       const isInterviewFee =
         metadataFlow === 'interview_fee' ||
@@ -82,8 +82,10 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
           ? `
             <h2>Pagamento confirmado ✅</h2>
             <p>Recebemos o teu pagamento de <strong>10€</strong> para a entrevista.</p>
-            <p>Próximo passo: agenda a tua entrevista aqui:</p>
-            <p><a href="${calendarUrl}">${calendarUrl}</a></p>
+            <p>Responde a este email com <strong>2 ou 3 opções de horário</strong>.</p>
+            <p><strong>Disponibilidade:</strong> segunda a sexta, das 09:00 às 17:00 (hora de Lisboa).</p>
+            <p><strong>Link Zoom da entrevista:</strong><br/><a href="${zoomUrl}">${zoomUrl}</a></p>
+            <p>Assim que recebermos a tua resposta, confirmamos o horário final.</p>
             <p>Até já,<br/>Mastering Lisboa</p>
           `
           : `
