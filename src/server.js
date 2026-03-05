@@ -50,6 +50,11 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
   try {
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
+      const metadataFlow = String(session.metadata?.flow || '').toLowerCase();     
+   if (metadataFlow !== 'interview_fee') {                                      
+   console.log('ℹ️ Ignorado: pagamento sem flow=interview_fee');                
+   return res.json({ received: true, ignored: true });                          
+   }  
 
       const amountCents = Number(session.amount_total || 0);
       const amount = amountCents / 100;
