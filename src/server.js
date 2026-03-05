@@ -1,4 +1,4 @@
-import express from 'express';                                               
+ import express from 'express';                                               
    import dotenv from 'dotenv';                                                 
    import Stripe from 'stripe';                                                 
    import nodemailer from 'nodemailer';                                         
@@ -30,11 +30,8 @@ import express from 'express';
                                                                                 
    let event;                                                                   
    try {                                                                        
-   event = stripe.webhooks.constructEvent(                                      
-   req.body,                                                                    
-   sig,                                                                         
-   process.env.STRIPE_WEBHOOK_SECRET                                            
-   );                                                                           
+   event = stripe.webhooks.constructEvent(r eq.body, sig,                       
+ process.env.STRIPE_WEBHOOK_SECRE T);                                           
    } catch (err) {                                                              
    console.error('❌ Stripe signature inválida:', err.message);                 
    return res.status(400).send(`Webhook Error: ${err.message}`);                
@@ -102,7 +99,6 @@ import express from 'express';
    console.error('❌ Erro ao enviar email:', mailErr.message);                  
    }                                                                            
                                                                                 
-   // Notificação interna para o Hugo quando entra nova inscrição de entrevista 
    if (isInterviewFee && process.env.ADMIN_NOTIFY_EMAIL) {                      
    const adminSubject = 'Nova inscrição para entrevista — Mastering Lisboa';    
    const adminHtml = `                                                          
@@ -132,10 +128,10 @@ import express from 'express';
    }                                                                            
    }                                                                            
                                                                                 
-   res.json({ received: true });                                                
+   return res.json({ received: true });                                         
    } catch (err) {                                                              
    console.error('❌ Erro ao processar evento:', err);                          
-   res.status(500).json({ error: 'internal_error' });                           
+   return res.status(500).json({ error: 'internal_error' });                    
    }                                                                            
    });                                                                          
                                                                                 
@@ -144,4 +140,4 @@ import express from 'express';
                                                                                 
    app.listen(port, () => {                                                     
    console.log(`🚀 inscricoes-bot ativo em http://localhost:${port}`);          
-   });
+   }); 
