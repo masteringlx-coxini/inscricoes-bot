@@ -75,14 +75,15 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
 
       if (email !== 'sem-email' && process.env.RESEND_API_KEY) {
         const subject = isInterviewFee
-          ? 'Pagamento confirmado — Entrevista Mastering Lisboa 2'
+          ? 'Pagamento confirmado — Entrevista Mastering Lisboa'
           : 'Pagamento confirmado — Curso Mastering Lisboa';
 
         const html = isInterviewFee
           ? `
             <h2>Pagamento confirmado ✅</h2>
             <p>Recebemos o teu pagamento de <strong>10€</strong> para a entrevista.</p>
-            <p>Responde a este email com <strong>2 ou 3 opções de horário</strong>.</p>
+            <p>Não respondas a este email automático.</p>
+            <p><strong>Para marcar a entrevista, responde para:</strong> masteringlx@gmail.com</p>
             <p><strong>Disponibilidade:</strong> segunda a sexta, das 09:00 às 17:00 (hora de Lisboa).</p>
             <p><strong>Link Zoom da entrevista:</strong><br/><a href="${zoomUrl}">${zoomUrl}</a></p>
             <p>Assim que recebermos a tua resposta, confirmamos o horário final.</p>
