@@ -75,7 +75,7 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
 
       if (email !== 'sem-email' && process.env.RESEND_API_KEY) {
         const subject = isInterviewFee
-          ? 'Pagamento confirmado — Entrevista Mastering Lisboa'
+          ? 'Pagamento confirmado — Entrevista Mastering Lisboa 2'
           : 'Pagamento confirmado — Curso Mastering Lisboa';
 
         const html = isInterviewFee
